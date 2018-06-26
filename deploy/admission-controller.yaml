@@ -1,0 +1,57 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: virtual-machine-admission-control
+  annotations:
+    service.alpha.openshift.io/serving-cert-secret-name: virtual-machine-admission-control-webhook-certificates
+spec:
+  ports:
+  - port: 443
+    protocol: TCP
+    targetPort: 8443
+  selector:
+    app: virtual-machine-admission-control
+  type: ClusterIP
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    app: virtual-machine-admission-control
+  name: virtual-machine-admission-control
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: virtual-machine-admission-control
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: virtual-machine-admission-control
+    spec:
+      containers:
+      - name: virtual-machine-admission-control
+        image: virtual-machine-admission-control:latest
+        imagePullPolicy: Always
+        command:
+        - /admission-controller
+        args:
+        - --tls-cert-file=/webhook.local.config/certificates/tls.crt
+        - --tls-private-key-file=/webhook.local.config/certificates/tls.key
+        ports:
+        - containerPort: 8443
+          name: http
+          protocol: TCP
+        volumeMounts:
+        - mountPath: /webhook.local.config/certificates
+          name: webhook-certificates
+          readOnly: true
+      volumes:
+      - name: webhook-certificates
+        secret:
+          defaultMode: 420
+          secretName: virtual-machine-admission-control-webhook-certificates

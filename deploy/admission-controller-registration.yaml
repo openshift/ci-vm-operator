@@ -1,0 +1,46 @@
+---
+apiVersion: admissionregistration.k8s.io/v1beta1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: virtual-machine-admission-control
+webhooks:
+- name: virtualmachines.ci.openshift.io
+  failurePolicy: Fail
+  rules:
+  - apiGroups:
+    - ci.openshift.io
+    apiVersions:
+    - "*"
+    operations:
+    - UPDATE
+    resources:
+    - virtualmachines
+  clientConfig:
+    service:
+      namespace: ci
+      name: virtual-machine-admission-control
+      path: /validate
+    caBundle: FILL-ME-IN
+---
+apiVersion: admissionregistration.k8s.io/v1beta1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: virtual-machine-admission-control
+webhooks:
+- name: virtualmachines.ci.openshift.io
+  failurePolicy: Fail
+  rules:
+  - apiGroups:
+    - ci.openshift.io
+    apiVersions:
+    - "*"
+    operations:
+    - CREATE
+    resources:
+    - virtualmachines
+  clientConfig:
+    service:
+      namespace: ci
+      name: virtual-machine-admission-control
+      path: /mutate
+    caBundle: FILL-ME-IN

@@ -1,0 +1,46 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: virtual-machine-operator
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  name: virtual-machine-operator
+rules:
+- apiGroups:
+  - ci.openshift.io
+  resources:
+  - virtualmachines
+  verbs:
+  - get
+  - list
+  - watch
+  - delete
+  - update
+- apiGroups:
+  - ci.openshift.io
+  resources:
+  - virtualmachines/status
+  verbs:
+  - update
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - create
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1beta1
+metadata:
+  name: virtual-machine-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: virtual-machine-operator
+subjects:
+- kind: ServiceAccount
+  name: virtual-machine-operator
+  namespace: ci

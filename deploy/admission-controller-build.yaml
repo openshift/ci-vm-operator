@@ -1,0 +1,93 @@
+---
+apiVersion: v1
+kind: ImageStream
+metadata:
+  name: virtual-machine-admission-control
+spec:
+  lookupPolicy:
+    local: true
+---
+apiVersion: v1
+kind: BuildConfig
+metadata:
+  labels:
+    ci.openshift.io/source-repo: ci-vm-operator
+  name: virtual-machine-admission-control
+spec:
+  failedBuildsHistoryLimit: 2
+  output:
+    to:
+      kind: ImageStreamTag
+      name: virtual-machine-admission-control:latest
+  runPolicy: Serial
+  source:
+    dockerfile: |
+      FROM docker.io/alpine:latest
+
+      COPY admission-controller /admission-controller
+    git:
+      ref: master
+      uri: https://github.com/openshift/ci-vm-operator.git
+    images:
+    - from:
+        kind: ImageStreamTag
+        name: virtual-machine-admission-control:binaries
+      paths:
+      - destinationDir: .
+        sourcePath: /go/bin/admission-controller
+    type: Git
+  strategy:
+    dockerStrategy:
+      from:
+        kind: DockerImage
+        name: docker.io/alpine:latest
+      imageOptimizationPolicy: SkipLayers
+    type: Docker
+  successfulBuildsHistoryLimit: 1
+  triggers:
+  - imageChange:
+      from:
+        kind: ImageStreamTag
+        name: virtual-machine-admission-control:binaries
+    type: ImageChange
+---
+apiVersion: v1
+kind: BuildConfig
+metadata:
+  labels:
+    ci.openshift.io/source-repo: ci-vm-operator
+  name: virtual-machine-admission-control-binaries
+spec:
+  failedBuildsHistoryLimit: 2
+  nodeSelector: null
+  output:
+    to:
+      kind: ImageStreamTag
+      name: virtual-machine-admission-control:binaries
+  runPolicy: Serial
+  source:
+    dockerfile: |
+      FROM docker.io/golang:1.10
+
+      COPY . /go/src/github.com/openshift/ci-vm-operator
+      RUN cd /go/src/github.com/openshift/ci-vm-operator && \
+          CGO_ENABLED=0 go install ./cmd/... && \
+          rm -rf /go/src /go/pkg
+    git:
+      ref: master
+      uri: https://github.com/openshift/ci-vm-operator.git
+    type: Git
+  strategy:
+    dockerStrategy:
+      from:
+        kind: DockerImage
+        name: docker.io/golang:1.10
+      imageOptimizationPolicy: SkipLayers
+    type: Docker
+  successfulBuildsHistoryLimit: 1
+  triggers:
+  - type: ConfigChange
+  - github:
+      secretReference:
+        name: github-deploymentconfig-trigger
+    type: GitHub
