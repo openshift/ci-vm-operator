@@ -14,8 +14,8 @@ spec:
     app: virtual-machine-admission-control
   type: ClusterIP
 ---
-apiVersion: extensions/v1beta1
-kind: Deployment
+apiVersion: apps.openshift.io/v1
+kind: DeploymentConfig
 metadata:
   labels:
     app: virtual-machine-admission-control
@@ -24,8 +24,7 @@ spec:
   replicas: 1
   revisionHistoryLimit: 2
   selector:
-    matchLabels:
-      app: virtual-machine-admission-control
+    app: virtual-machine-admission-control
   strategy:
     type: Recreate
   template:
@@ -55,3 +54,14 @@ spec:
         secret:
           defaultMode: 420
           secretName: virtual-machine-admission-control-webhook-certificates
+  triggers:
+  - type: ConfigChange
+  - type: ImageChange
+    imageChangeParams:
+      automatic: true
+      containerNames:
+      - virtual-machine-admission-control
+      from:
+        kind: ImageStreamTag
+        name: virtual-machine-admission-control:latest
+        namespace: ci

@@ -1,6 +1,6 @@
 ---
-apiVersion: extensions/v1beta1
-kind: Deployment
+apiVersion: apps.openshift.io/v1
+kind: DeploymentConfig
 metadata:
   labels:
     app: virtual-machine-operator
@@ -9,8 +9,7 @@ spec:
   replicas: 1
   revisionHistoryLimit: 2
   selector:
-    matchLabels:
-      app: virtual-machine-operator
+    app: virtual-machine-operator
   strategy:
     type: Recreate
   template:
@@ -46,6 +45,17 @@ spec:
         secret:
           defaultMode: 420
           secretName: virtual-machine-operator-credentials
+  triggers:
+  - type: ConfigChange
+  - type: ImageChange
+    imageChangeParams:
+      automatic: true
+      containerNames:
+      - virtual-machine-operator
+      from:
+        kind: ImageStreamTag
+        name: virtual-machine-operator:latest
+        namespace: ci
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -55,3 +65,7 @@ data:
   config.yaml: |
     project: openshift-gce-devel-ci
     zone: us-east1-b
+    sshConnectionConfig:
+      retries: 20
+      delaySeconds: 10
+      timeoutSeconds: 10
