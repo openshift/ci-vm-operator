@@ -27,6 +27,7 @@ const (
 type options struct {
 	configLocation string
 	numWorkers     int
+	logLevel       string
 }
 
 func main() {
@@ -34,7 +35,14 @@ func main() {
 	o := options{}
 	flag.StringVar(&o.configLocation, "config-file", "", "Path to the controller configuration.")
 	flag.IntVar(&o.numWorkers, "num-workers", 10, "Number of worker threads.")
+	flag.StringVar(&o.logLevel, "log-level", logrus.DebugLevel.String(), "Logging level.")
 	flag.Parse()
+
+	level, err := logrus.ParseLevel(o.logLevel)
+	if err != nil {
+		logrus.WithError(err).Fatal("failed to parse log level")
+	}
+	logrus.SetLevel(level)
 
 	configFile, err := os.Open(o.configLocation)
 	if err != nil {

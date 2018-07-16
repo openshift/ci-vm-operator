@@ -23,15 +23,23 @@ import (
 type Configuration struct {
 	CertFile string
 	KeyFile  string
+	LogLevel string
 }
 
 func (c *Configuration) AddFlags() {
 	flag.StringVar(&c.CertFile, "tls-cert-file", c.CertFile, "File containing the default x509 Certificate for HTTPS. (CA cert, if any, concatenated after server cert).")
 	flag.StringVar(&c.KeyFile, "tls-private-key-file", c.KeyFile, "File containing the default x509 private key matching --tls-cert-file.")
+	flag.StringVar(&c.LogLevel, "log-level", logrus.DebugLevel.String(), "Logging level.")
 }
 
 func (c *Configuration) Run() error {
 	logrus.Info("starting VirtualMachines admission controller")
+
+	level, err := logrus.ParseLevel(c.LogLevel)
+	if err != nil {
+		logrus.WithError(err).Fatal("failed to parse log level")
+	}
+	logrus.SetLevel(level)
 
 	sCert, err := tls.LoadX509KeyPair(c.CertFile, c.KeyFile)
 	if err != nil {
