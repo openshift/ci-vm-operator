@@ -75,9 +75,9 @@ type VirtualMachineDiskSpec struct {
 
 // VirtualMachineStatus is the status for a VirtualMachine resource
 type VirtualMachineStatus struct {
-	State        ProcessingState        `json:"state"`
-	SelfLink     string                 `json:"selfLink"`
-	SecretRef    corev1.ObjectReference `json:"secretRef"`
+	State     ProcessingState        `json:"state"`
+	SelfLink  string                 `json:"selfLink"`
+	SecretRef corev1.ObjectReference `json:"secretRef"`
 }
 
 type ProcessingPhase string

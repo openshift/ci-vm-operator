@@ -9,18 +9,18 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	kubeclientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/apimachinery/pkg/util/sets"
 
-	vminformers "github.com/openshift/ci-vm-operator/pkg/client/informers/externalversions/virtualmachines/v1alpha1"
-	vmclient "github.com/openshift/ci-vm-operator/pkg/client/clientset/versioned/typed/virtualmachines/v1alpha1"
-	vmlisters "github.com/openshift/ci-vm-operator/pkg/client/listers/virtualmachines/v1alpha1"
 	vmapi "github.com/openshift/ci-vm-operator/pkg/apis/virtualmachines/v1alpha1"
+	vmclient "github.com/openshift/ci-vm-operator/pkg/client/clientset/versioned/typed/virtualmachines/v1alpha1"
+	vminformers "github.com/openshift/ci-vm-operator/pkg/client/informers/externalversions/virtualmachines/v1alpha1"
+	vmlisters "github.com/openshift/ci-vm-operator/pkg/client/listers/virtualmachines/v1alpha1"
 	"github.com/openshift/ci-vm-operator/pkg/metrics"
 )
 

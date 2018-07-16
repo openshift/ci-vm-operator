@@ -1,21 +1,21 @@
 package admission_controller
 
 import (
+	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"io/ioutil"
 	"net/http"
-	"crypto/tls"
-	"bytes"
 
-	"github.com/sirupsen/logrus"
 	"github.com/mattbaird/jsonpatch"
+	"github.com/sirupsen/logrus"
 
 	admissionapi "k8s.io/api/admission/v1beta1"
-	"k8s.io/apimachinery/pkg/runtime"
-	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/api/equality"
+	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/sets"
 
 	vmapi "github.com/openshift/ci-vm-operator/pkg/apis/virtualmachines/v1alpha1"
 )

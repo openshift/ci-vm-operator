@@ -2,22 +2,22 @@ package main
 
 import (
 	"flag"
-	"os"
 	"fmt"
-	"time"
+	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/sirupsen/logrus"
 
 	"k8s.io/apimachinery/pkg/util/yaml"
-	"k8s.io/client-go/rest"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"github.com/openshift/ci-vm-operator/pkg/controller"
 	vmclient "github.com/openshift/ci-vm-operator/pkg/client/clientset/versioned"
 	vminformers "github.com/openshift/ci-vm-operator/pkg/client/informers/externalversions"
+	"github.com/openshift/ci-vm-operator/pkg/controller"
 )
 
 const (

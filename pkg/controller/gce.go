@@ -1,13 +1,13 @@
 package controller
 
 import (
-	"time"
-	"path"
 	"bytes"
 	"errors"
-	"net/http"
 	"fmt"
+	"net/http"
+	"path"
 	"strings"
+	"time"
 
 	"github.com/sirupsen/logrus"
 
