@@ -2,11 +2,15 @@ package controller
 
 import (
 	"bytes"
-	"crypto/rsa"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"net"
+	"time"
+
+	"github.com/sirupsen/logrus"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -34,4 +38,48 @@ func newSSHKeypair() (string, string, error) {
 	}
 
 	return privateKeyData.String(), publicKeyData.String(), nil
+}
+
+func pollForSSHConnection(sshConfig SSHConnectionConfig, instanceHostname, pem string, logger *logrus.Entry) error {
+	signer, err := ssh.ParsePrivateKey([]byte(pem))
+	if err != nil {
+		logger.WithError(err).Error("failed to parse private key")
+		return fmt.Errorf("failed to parse private key: %v", err)
+	}
+	config := &ssh.ClientConfig{
+		User: "root",
+		Auth: []ssh.AuthMethod{
+			ssh.PublicKeys(signer),
+		},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // TODO: fixed host key
+		Timeout:         time.Duration(sshConfig.TimeoutSeconds) * time.Second,
+	}
+	succeeded := false
+	logger = logger.WithField("hostname", instanceHostname)
+	for i := 0; i < sshConfig.Retries; i ++ {
+		iLogger := logger.WithField("attempt", i + 1)
+		iLogger.Debug("dialing host")
+		conn, dialErr := net.DialTimeout("tcp", instanceHostname, config.Timeout)
+		if dialErr == nil {
+			iLogger.Debug("dial success")
+			c, _, _, connErr := ssh.NewClientConn(conn, instanceHostname, config)
+			if connErr == nil {
+				iLogger.Debug("SSH connection success")
+				if closeErr := c.Close(); closeErr != nil {
+					iLogger.WithError(closeErr).Warning("failed to close SSH connection")
+				}
+				succeeded = true
+			} else {
+				iLogger.WithError(connErr).Warning("SSH connection failure")
+			}
+			break
+		} else {
+			iLogger.WithError(dialErr).Debug("dial failure")
+		}
+		time.Sleep(time.Duration(sshConfig.DelaySeconds) * time.Second)
+	}
+	if !succeeded {
+		return fmt.Errorf("could not connect to VM over SSH in %d attempts", sshConfig.Retries)
+	}
+	return nil
 }

@@ -112,6 +112,7 @@ func (c *Controller) ensureVM(vm *vmapi.VirtualMachine) error {
 
 	instance, err := c.gceClient.InstancesGet(c.config.Project, string(c.config.Zone), vm.ObjectMeta.Name)
 	if instance != nil {
+		// TODO: if we have a VM but not a secret that means SSH connection failed, how do we reconcile?
 		logger.Infof("Skipped creating a VM that is already created.")
 		return nil
 	}
@@ -124,7 +125,7 @@ func (c *Controller) ensureVM(vm *vmapi.VirtualMachine) error {
 	logger.Info("creating SSH keypair")
 	pem, pub, err := newSSHKeypair()
 	if err != nil {
-		return fmt.Errorf("coult not create SSH keypair for VM: %v", err)
+		return fmt.Errorf("could not create SSH keypair for VM: %v", err)
 	}
 	formattedPub := fmt.Sprintf("root:%s root", strings.TrimSuffix(pub, "\n"))
 
@@ -187,6 +188,13 @@ func (c *Controller) ensureVM(vm *vmapi.VirtualMachine) error {
 		logger.WithError(err).Error("failed to locate newly created GCE VM")
 		return fmt.Errorf("failed to check for existance of virtual machine: %v", err)
 	}
+	instanceHostname := instance.NetworkInterfaces[0].AccessConfigs[0].NatIP
+
+	logger.Info("waiting for successful SSH connection to new VM")
+	if err := pollForSSHConnection(c.config.SSHConnectionConfig, fmt.Sprintf("%s:22", instanceHostname), pem, logger); err != nil {
+		// TODO: SSH connection failure should block secret
+		logger.WithError(err).Warning("could not connect to VM over SSH")
+	}
 
 	logger.Info("uploading SSH keypair to cluster")
 	if _, err := c.kubeClient.CoreV1().Secrets(vm.Namespace).Create(&coreapi.Secret{
@@ -210,7 +218,7 @@ func (c *Controller) ensureVM(vm *vmapi.VirtualMachine) error {
   HostName %s
   Port 22
   StrictHostKeyChecking no
-`, instance.Name, instance.NetworkInterfaces[0].AccessConfigs[0].NatIP),
+`, instance.Name, instanceHostname),
 		},
 	}); err != nil {
 		logger.WithError(err).Error("error creating SSH secret")

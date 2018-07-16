@@ -23,4 +23,12 @@ const (
 type Configuration struct {
 	Project string  `json:"project"`
 	Zone    GCPZone `json:"zone"`
+
+	SSHConnectionConfig SSHConnectionConfig `json:"sshConnectionConfig"`
+}
+
+type SSHConnectionConfig struct {
+	Retries        int `json:"retries"`
+	DelaySeconds   int `json:"delaySeconds"`
+	TimeoutSeconds int `json:"timeoutSeconds"`
 }
