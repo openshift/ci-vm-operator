@@ -17,6 +17,7 @@ import (
 	"google.golang.org/api/googleapi"
 
 	coreapi "k8s.io/api/core/v1"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	vmapi "github.com/openshift/ci-vm-operator/pkg/apis/virtualmachines/v1alpha1"
@@ -31,6 +32,7 @@ type GCEClient interface {
 	InstancesDelete(project string, zone string, targetInstance string) (*compute.Operation, error)
 	InstancesGet(project string, zone string, instance string) (*compute.Instance, error)
 	InstancesInsert(project string, zone string, instance *compute.Instance) (*compute.Operation, error)
+	SetMetadata(project string, zone string, instance string, metadata *compute.Metadata) (*compute.Operation, error)
 	ZoneOperationsGet(project string, zone string, operation string) (*compute.Operation, error)
 }
 
@@ -62,6 +64,10 @@ func (c *gceClient) InstancesGet(project string, zone string, instance string) (
 
 func (c *gceClient) InstancesInsert(project string, zone string, instance *compute.Instance) (*compute.Operation, error) {
 	return c.c.Instances.Insert(project, zone, instance).Do()
+}
+
+func (c *gceClient) SetMetadata(project string, zone string, instance string, metadata *compute.Metadata) (*compute.Operation, error) {
+	return c.c.Instances.SetMetadata(project, zone, instance, metadata).Do()
 }
 
 func (c *gceClient) ZoneOperationsGet(project string, zone string, operation string) (*compute.Operation, error) {
@@ -112,7 +118,13 @@ func (c *Controller) ensureVM(vm *vmapi.VirtualMachine) error {
 
 	instance, err := c.gceClient.InstancesGet(c.config.Project, string(c.config.Zone), vm.ObjectMeta.Name)
 	if instance != nil {
-		// TODO: if we have a VM but not a secret that means SSH connection failed, how do we reconcile?
+		if _, err := c.kubeClient.CoreV1().Secrets(vm.Namespace).Get(vm.Name, meta.GetOptions{}); err != nil {
+			if kerrors.IsNotFound(err) {
+				logger.Infof("Regenerating SSH key for existing VM.")
+				return c.refreshSSHKey(vm, logger)
+			}
+			return fmt.Errorf("failed to check for existance of secret: %v", err)
+		}
 		logger.Infof("Skipped creating a VM that is already created.")
 		return nil
 	}
@@ -122,6 +134,59 @@ func (c *Controller) ensureVM(vm *vmapi.VirtualMachine) error {
 		}
 	}
 
+	return c.createNewVM(vm, logger)
+}
+
+func (c *Controller) createNewVM(vm *vmapi.VirtualMachine, logger *logrus.Entry) error {
+	return c.runVMOpPollSSH(vm, func(publicKey string) (*compute.Operation, error) {
+		disks := []*compute.AttachedDisk{
+			{
+				AutoDelete: true,
+				Boot:       true,
+				InitializeParams: &compute.AttachedDiskInitializeParams{
+					SourceImage: vm.Spec.BootDisk.ImageFamily,
+					DiskSizeGb:  vm.Spec.BootDisk.SizeGB,
+					DiskType:    fmt.Sprintf("projects/%s/zones/%s/diskTypes/%s", c.config.Project, c.config.Zone, vm.Spec.BootDisk.Type),
+				},
+			},
+		}
+		for _, disk := range vm.Spec.Disks {
+			disks = append(disks, &compute.AttachedDisk{
+				AutoDelete: true,
+				InitializeParams: &compute.AttachedDiskInitializeParams{
+					DiskSizeGb: disk.SizeGB,
+					DiskType:   string(disk.Type),
+				},
+			})
+		}
+		logger.Info("creating GCE VM")
+		return c.gceClient.InstancesInsert(c.config.Project, string(c.config.Zone), &compute.Instance{
+			Name:        vm.ObjectMeta.Name,
+			MachineType: fmt.Sprintf("zones/%s/machineTypes/%s", c.config.Zone, vm.Spec.MachineType),
+			Metadata: &compute.Metadata{
+				Items: []*compute.MetadataItems{{
+					Key:   "ssh-keys",
+					Value: &publicKey,
+				}},
+			},
+			CanIpForward: true,
+			NetworkInterfaces: []*compute.NetworkInterface{
+				{
+					Network: "global/networks/default",
+					AccessConfigs: []*compute.AccessConfig{
+						{
+							Type: "ONE_TO_ONE_NAT",
+							Name: "External NAT",
+						},
+					},
+				},
+			},
+			Disks: disks,
+		})
+	}, logger)
+}
+
+func (c *Controller) runVMOpPollSSH(vm *vmapi.VirtualMachine, action func(publicKey string) (*compute.Operation, error), logger *logrus.Entry) error {
 	logger.Info("creating SSH keypair")
 	user := "cloud-user"
 	pem, pub, err := newSSHKeypair()
@@ -130,68 +195,24 @@ func (c *Controller) ensureVM(vm *vmapi.VirtualMachine) error {
 	}
 	formattedPub := fmt.Sprintf("%s:%s %s", user, strings.TrimSuffix(pub, "\n"), user)
 
-	disks := []*compute.AttachedDisk{
-		{
-			AutoDelete: true,
-			Boot:       true,
-			InitializeParams: &compute.AttachedDiskInitializeParams{
-				SourceImage: vm.Spec.BootDisk.ImageFamily,
-				DiskSizeGb:  vm.Spec.BootDisk.SizeGB,
-				DiskType:    fmt.Sprintf("projects/%s/zones/%s/diskTypes/%s", c.config.Project, c.config.Zone, vm.Spec.BootDisk.Type),
-			},
-		},
-	}
-	for _, disk := range vm.Spec.Disks {
-		disks = append(disks, &compute.AttachedDisk{
-			AutoDelete: true,
-			InitializeParams: &compute.AttachedDiskInitializeParams{
-				DiskSizeGb: disk.SizeGB,
-				DiskType:   string(disk.Type),
-			},
-		})
-	}
-	logger.Info("creating GCE VM")
-	op, err := c.gceClient.InstancesInsert(c.config.Project, string(c.config.Zone), &compute.Instance{
-		Name:        vm.ObjectMeta.Name,
-		MachineType: fmt.Sprintf("zones/%s/machineTypes/%s", c.config.Zone, vm.Spec.MachineType),
-		Metadata: &compute.Metadata{
-			Items: []*compute.MetadataItems{{
-				Key:   "ssh-keys",
-				Value: &formattedPub,
-			}},
-		},
-		CanIpForward: true,
-		NetworkInterfaces: []*compute.NetworkInterface{
-			{
-				Network: "global/networks/default",
-				AccessConfigs: []*compute.AccessConfig{
-					{
-						Type: "ONE_TO_ONE_NAT",
-						Name: "External NAT",
-					},
-				},
-			},
-		},
-		Disks: disks,
-	})
-
+	op, err := action(formattedPub)
 	if err == nil {
 		err = c.waitForOperation(op, logger)
 	}
 
 	if err != nil {
-		logger.WithError(err).Error("failed to create GCE VM")
-		return c.handleError(vm, fmt.Errorf("error creating GCE instance: %v", err))
+		logger.WithError(err).Error("failed to run operation on GCE VM")
+		return c.handleError(vm, fmt.Errorf("error running operation: %v", err))
 	}
 
-	instance, err = c.gceClient.InstancesGet(c.config.Project, string(c.config.Zone), vm.ObjectMeta.Name)
+	instance, err := c.gceClient.InstancesGet(c.config.Project, string(c.config.Zone), vm.ObjectMeta.Name)
 	if err != nil {
-		logger.WithError(err).Error("failed to locate newly created GCE VM")
-		return fmt.Errorf("failed to check for existance of virtual machine: %v", err)
+		logger.WithError(err).Error("failed to locate GCE VM")
+		return fmt.Errorf("failed to check for virtual machine: %v", err)
 	}
 	instanceHostname := instance.NetworkInterfaces[0].AccessConfigs[0].NatIP
 
-	logger.Info("waiting for successful SSH connection to new VM")
+	logger.Info("waiting for successful SSH connection to VM")
 	if err := pollForSSHConnection(c.config.SSHConnectionConfig, instanceHostname, user, pem, logger); err != nil {
 		// TODO: SSH connection failure should block secret
 		logger.WithError(err).Warning("could not connect to VM over SSH")
@@ -272,4 +293,16 @@ func (c *Controller) handleError(vm *vmapi.VirtualMachine, err error) error {
 	updated.Status.State.Message = err.Error()
 	_, updateErr := c.client.VirtualMachines(vm.Namespace).UpdateStatus(updated)
 	return updateErr
+}
+
+func (c *Controller) refreshSSHKey(vm *vmapi.VirtualMachine, logger *logrus.Entry) error {
+	return c.runVMOpPollSSH(vm, func(publicKey string) (*compute.Operation, error) {
+		logger.Info("adding new SSH key to VM")
+		return c.gceClient.SetMetadata(c.config.Project, string(c.config.Zone), vm.ObjectMeta.Name, &compute.Metadata{
+			Items: []*compute.MetadataItems{{
+				Key:   "ssh-keys",
+				Value: &publicKey,
+			}},
+		})
+	}, logger)
 }
