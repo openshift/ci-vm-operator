@@ -40,14 +40,14 @@ func newSSHKeypair() (string, string, error) {
 	return privateKeyData.String(), publicKeyData.String(), nil
 }
 
-func pollForSSHConnection(sshConfig SSHConnectionConfig, instanceHostname, pem string, logger *logrus.Entry) error {
+func pollForSSHConnection(sshConfig SSHConnectionConfig, instanceHostname, user, pem string, logger *logrus.Entry) error {
 	signer, err := ssh.ParsePrivateKey([]byte(pem))
 	if err != nil {
 		logger.WithError(err).Error("failed to parse private key")
 		return fmt.Errorf("failed to parse private key: %v", err)
 	}
 	config := &ssh.ClientConfig{
-		User: "root",
+		User: user,
 		Auth: []ssh.AuthMethod{
 			ssh.PublicKeys(signer),
 		},
@@ -59,7 +59,7 @@ func pollForSSHConnection(sshConfig SSHConnectionConfig, instanceHostname, pem s
 	for i := 0; i < sshConfig.Retries; i ++ {
 		iLogger := logger.WithField("attempt", i + 1)
 		iLogger.Debug("dialing host")
-		conn, dialErr := net.DialTimeout("tcp", instanceHostname, config.Timeout)
+		conn, dialErr := net.DialTimeout("tcp", fmt.Sprintf("%s:22", instanceHostname), config.Timeout)
 		if dialErr == nil {
 			iLogger.Debug("dial success")
 			c, _, _, connErr := ssh.NewClientConn(conn, instanceHostname, config)

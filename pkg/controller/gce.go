@@ -123,11 +123,12 @@ func (c *Controller) ensureVM(vm *vmapi.VirtualMachine) error {
 	}
 
 	logger.Info("creating SSH keypair")
+	user := "cloud-user"
 	pem, pub, err := newSSHKeypair()
 	if err != nil {
 		return fmt.Errorf("could not create SSH keypair for VM: %v", err)
 	}
-	formattedPub := fmt.Sprintf("root:%s root", strings.TrimSuffix(pub, "\n"))
+	formattedPub := fmt.Sprintf("%s:%s %s", user, strings.TrimSuffix(pub, "\n"), user)
 
 	disks := []*compute.AttachedDisk{
 		{
@@ -191,7 +192,7 @@ func (c *Controller) ensureVM(vm *vmapi.VirtualMachine) error {
 	instanceHostname := instance.NetworkInterfaces[0].AccessConfigs[0].NatIP
 
 	logger.Info("waiting for successful SSH connection to new VM")
-	if err := pollForSSHConnection(c.config.SSHConnectionConfig, fmt.Sprintf("%s:22", instanceHostname), pem, logger); err != nil {
+	if err := pollForSSHConnection(c.config.SSHConnectionConfig, instanceHostname, user, pem, logger); err != nil {
 		// TODO: SSH connection failure should block secret
 		logger.WithError(err).Warning("could not connect to VM over SSH")
 	}
@@ -217,8 +218,9 @@ func (c *Controller) ensureVM(vm *vmapi.VirtualMachine) error {
 			"ssh_config": fmt.Sprintf(`Host %s
   HostName %s
   Port 22
+  User %s
   StrictHostKeyChecking no
-`, instance.Name, instanceHostname),
+`, instance.Name, instanceHostname, user),
 		},
 	}); err != nil {
 		logger.WithError(err).Error("error creating SSH secret")
